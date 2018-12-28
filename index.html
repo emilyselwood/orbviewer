@@ -50,6 +50,11 @@
                 }, false);
 
                 renderer = new THREE.WebGLRenderer( { antialias: true, logarithmicDepthBuffer: true } );
+
+                renderer.vr.enabled = true;
+                // HACK because vr does not play well with orbit controls
+                if (!renderer.vr._origGetCamera) renderer.vr._origGetCamera = renderer.vr.getCamera;
+
                 renderer.setPixelRatio( window.devicePixelRatio );
                 renderer.setSize( window.innerWidth, window.innerHeight );
                 container.appendChild( renderer.domElement );
@@ -270,8 +275,11 @@
                 requestAnimationFrame(animate);
                 resize();
                 // if vr is enabled three will handle the controls for us.
-                if (! renderer.vr.getDevice() || !renderer.vr.getDevice().isPresenting) {
+                if (renderer.vr.isPresenting()) {
+                    renderer.vr.getCamera = renderer.vr._origGetCamera;
+                } else {
                     controls.update();
+                    renderer.vr.getCamera = () => camera;
                 }
 
                 //raycastCheck();
@@ -282,6 +290,10 @@
 			function render() {
 				renderer.render( scene, camera );
 			}
+
+            window.addEventListener('vrdisplaypresentchange', () => {
+                camera.position.z = 60;
+            });
 		</script>
 	</body>
 </html>
