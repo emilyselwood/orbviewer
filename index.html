@@ -69,6 +69,9 @@
 
                 camera = new THREE.PerspectiveCamera( 90, window.innerWidth / window.innerHeight, 3, 100000 );
                 camera.position.z = 60;
+                window.addEventListener('vrdisplaypresentchange', () => {
+                    camera.position.z = 60;
+                });
 
                 controls = new THREE.OrbitControls( camera );
                 
@@ -290,10 +293,6 @@
 			function render() {
 				renderer.render( scene, camera );
 			}
-
-            window.addEventListener('vrdisplaypresentchange', () => {
-                camera.position.z = 60;
-            });
 		</script>
 	</body>
 </html>
