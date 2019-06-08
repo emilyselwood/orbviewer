@@ -2,23 +2,88 @@ if ( WEBGL.isWebGLAvailable() === false ) {
     document.body.appendChild( WEBGL.getWebGLErrorMessage() );
 }
 
-var container;
-var camera, scene, renderer;
-var scale = 1000000;
-var controls;
-var stats;
-var sprite;
-var raycaster;
-var mouse;
-var sphere;
-var pointsSet = [];
-var dragFlag = 0;
-var controlState = 0;
-var tween;
+let container;
+let camera, scene, renderer;
+const scale = 1000000;
+let controls;
+let stats;
+let sprite;
+let raycaster;
+let mouse;
+let sphere;
+let pointsSet = [];
+let dragFlag = 0;
+let controlState = 0;
+let tween;
+let orbitLine = null;
+let server = true;
+
+// size of the solar system
+// TODO: pull this from somewhere and make the server generate it.
+const minX = -1.0993153024260256e+10 / scale;
+const maxX = 1.1259105381765476e+10 / scale;
+const minY = -8.336972753734525e+09 / scale;
+const maxY = 1.1216725295000006e+10 / scale;
+const minZ = -5.482463379824468e+09 / scale;
+const maxZ = 4.381383003697839e+09 / scale;
+
+// color pallets for pride flags.
+const Rainbow = [
+    [231 / 255, 0, 0],
+    [255 / 255, 140 / 255, 0],
+    [255 / 255, 239 / 255, 0],
+    [0, 129 / 255, 31 / 255],
+    [0, 68 / 255, 255 / 255]
+];
+
+const Trans = [
+    [85 / 255, 205 / 255, 252 / 255],
+    [247 / 255, 168 / 255, 184 / 255],
+    [255 / 255, 255 / 255, 255 / 255],
+    [247 / 255, 168 / 255, 184 / 255],
+    [85 / 255, 205 / 255, 252 / 255]
+];
+
+// TODO: check that this is correct
+const Bi = [
+    [217 / 255, 0, 111 / 255],
+    [217 / 255, 0, 111 / 255],
+    [116 / 255, 77 / 255, 152 / 255],
+    [0, 51 / 255, 171 / 255],
+    [0, 51 / 255, 171 / 255]
+];
+
+// TODO: Lesbian
+// TODO: Pan
+
+// basic color pallet for asteroids.
+const White = [[1, 1, 1]];
+
+const colourmaps = [
+    Rainbow,
+    Trans,
+    Bi,
+    White
+];
+// pick a random colour map for the asteroids
+let colourMap = null;
 
 init();
 
 function init() {
+
+    // pick a colour pallet for the asteroids.
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('f')) {
+        const f = parseInt(url.searchParams.get('f'), 10);
+        if(!Number.isNaN(f) && f >= 0 && f < colourmaps.length) {
+            colourMap = colourmaps[f];
+        }
+    }
+    if (colourMap === null) {
+        colourMap = colourmaps[Math.floor(Math.random() * colourmaps.length)];
+    }
+
     document.addEventListener( 'mousemove', onDocumentMouseMove, false );
     container = document.getElementById( 'container' );
     container.addEventListener('click', onCanvasClick, false);
@@ -39,14 +104,13 @@ function init() {
     stats = new Stats();
     container.appendChild( stats.dom );
 
-    var vrButton = WEBVR.createButton(renderer);
+    let vrButton = WEBVR.createButton(renderer);
     if (vrButton) {
         document.body.appendChild(vrButton);
     }
 
     camera = new THREE.PerspectiveCamera( 90, window.innerWidth / window.innerHeight, 3, 100000 );
     camera.position.z = 60;
-
 
     window.addEventListener('vrdisplaypresentchange', () => {
         camera.position.z = 60;
@@ -66,29 +130,28 @@ function init() {
 
     THREE.Cache.enabled = true;
 
-    var loader = new THREE.TextureLoader();
-    sprite = loader.load( 'img/particle2.png' );
+    sprite = new THREE.TextureLoader().load( 'img/particle2.png' );
 
-    for (var i = 0; i < 16; i++) {
+    for (let i = 0; i < 16; i++) {
         loadAsteroidBatch(i);
     }
 
-    var majorPlanets = ["Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"];
-    var colours = [new THREE.Color(1,0,0), new THREE.Color(0,1,0), new THREE.Color(0,0,1),
-        new THREE.Color(1,1,0), new THREE.Color(1,0,1), new THREE.Color(0,1,1),
+    const majorPlanets = ["Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"];
+    const colours = [new THREE.Color(1,1,0), new THREE.Color(0,1,0), new THREE.Color(0,0,1),
+        new THREE.Color(1,0,0), new THREE.Color(1,0,1), new THREE.Color(0,1,1),
         new THREE.Color(0,1,0), new THREE.Color(1,0,0)];
 
-    for (var i = 0; i < majorPlanets.length; i++) {
+    for (let i = 0; i < majorPlanets.length; i++) {
         loadMajorPlanet(majorPlanets[i], colours[i])
     }
 
     createSun();
 
-
     // Create ray cast target sphere:
-    var sphereGeometry = new THREE.SphereBufferGeometry( 0.1, 12, 12 );
-    var sphereMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000 } );
-    sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+    sphere = new THREE.Mesh(
+        new THREE.SphereBufferGeometry( 0.1, 12, 12 ),
+        new THREE.MeshBasicMaterial( { color: 0xff0000 } )
+    );
     scene.add( sphere );
 
     animate();
@@ -117,27 +180,27 @@ function loadAsteroidBatch(batch) {
             lights: false,
             sizeAttenuation: false
         } ),
-        new THREE.Color(0.9,0.9,1),
+        colourMap,
         THREE.Points,
         true
     );
 }
 
 function createSun() {
-    var positions = [0, 0, 0];
-    var colors = [1,1,0];
+    const positions = [0, 0, 0];
+    const colors = [1,1,0];
 
-    var geometry = new THREE.BufferGeometry();
+    const geometry = new THREE.BufferGeometry();
     geometry.addAttribute( 'position', new THREE.Float32BufferAttribute( positions, 3 ) );
     geometry.addAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ) );
     geometry.computeBoundingSphere();
     
-    var points = new THREE.Points( geometry, new THREE.PointsMaterial( { size: 10, vertexColors: THREE.VertexColors, map: sprite, blending: THREE.AdditiveBlending, depthTest: false, transparent: true } ));
+    const points = new THREE.Points( geometry, new THREE.PointsMaterial( { size: 10, vertexColors: THREE.VertexColors, map: sprite, blending: THREE.AdditiveBlending, depthTest: false, transparent: true } ));
     scene.add( points );
 }
 
 function loadData(name, mat, color, T, raytarget) {
-    var loader = new THREE.FileLoader();
+    let loader = new THREE.FileLoader();
     
     //load a text file and output the result to the console
     loader.load(
@@ -145,17 +208,17 @@ function loadData(name, mat, color, T, raytarget) {
         name,
         // onLoad callback
         function ( data ) {
-            var bits = createGeom(data, color);
-            var positions = bits[0];
-            var colors = bits[1];
-            var ids = bits[2];
+            const bits = createGeom(data, color);
+            const positions = bits[0];
+            const colors = bits[1];
+            const ids = bits[2];
 
-            var geometry = new THREE.BufferGeometry();
+            const geometry = new THREE.BufferGeometry();
             geometry.addAttribute( 'position', new THREE.Float32BufferAttribute( positions, 3 ) );
             geometry.addAttribute( 'color', new THREE.Float32BufferAttribute( colors, 3 ) );
             geometry.computeBoundingSphere();
 
-            var points = new T( geometry, mat);
+            const points = new T( geometry, mat);
             if (ids.length > 0) {
                 points.userData = {IDS: ids};
             }
@@ -168,29 +231,29 @@ function loadData(name, mat, color, T, raytarget) {
 
         // onProgress callback
         function ( xhr ) {
-            console.log( name + ": " + (xhr.loaded / xhr.total * 100) + '% loaded ' );
+            //c onsole.log( name + ": " + (xhr.loaded / xhr.total * 100) + '% loaded ' );
         },
 
         // onError callback
         function ( err ) {
-            console.error( 'An error happened loading ' + name );
+            console.error( 'An error happened loading ' + name + ' ' + err);
         }
     );
 }
 
 function createGeom(data, color) {
-    var positions = [];
-    var colors = [];
-    var ids = [];
-    var lines = data.split(/\r?\n/);
-    var n = lines.length;
-    for (var i = 0; i < n; i++) {
+    let positions = [];
+    let colors = [];
+    let ids = [];
+    const lines = data.split(/\r?\n/);
+    const n = lines.length;
+    for (let i = 0; i < n; i++) {
         if (lines[i] !== "") {
-            parts = lines[i].split(",");
-            var id = "";
-            var x = 0.0;
-            var y = 0.0;
-            var z = 0.0;
+            let parts = lines[i].split(",");
+            let id = "";
+            let x = 0.0;
+            let y = 0.0;
+            let z = 0.0;
 
             if (parts.length === 4) {
                 id = parts[0];
@@ -208,17 +271,23 @@ function createGeom(data, color) {
             
             if (isNaN(x) || isNaN(y) || isNaN(z)) {
                 console.log("could not decode " + lines[i] + " line " + i);
-            } else {
-
-                x = x / scale;
-                y = y / scale;
-                z = z / scale;
-                positions.push( x, z, y ); // swap z and y around so we get more intuitve controls
-                colors.push( color.r, color.g, color.b );
-                if (id !== "") {
-                    ids.push(id);
-                }
+                continue;
             }
+
+            x = x / scale;
+            y = y / scale;
+            z = z / scale;
+            positions.push( x, z, y ); // swap z and y around so we get more intuitive controls
+            if (Array.isArray(color)) { // if our color is an array we probably need to pick one of the entries.
+                let c = mapToColour(color, x, y, z);
+                colors.push(c[0], c[1], c[2]);
+            } else { // otherwise it should be a three.Color object.
+                colors.push(color.r, color.g, color.b);
+            }
+            if (id !== "") {
+                ids.push(id);
+            }
+
         }
     }
     return [positions, colors, ids];
@@ -226,19 +295,57 @@ function createGeom(data, color) {
 
 function raycastCheck() {
     raycaster.setFromCamera( mouse, camera );
-    var intersections = raycaster.intersectObjects(pointsSet );
-    intersection = ( intersections.length ) > 0 ? intersections[ 0 ] : null;
+    const intersections = raycaster.intersectObjects(pointsSet );
+    const intersection = ( intersections.length ) > 0 ? intersections[ 0 ] : null;
     
     if ( intersection !== null) {
         sphere.position.copy( intersection.point );
         sphere.scale.set( 1, 1, 1 );
 
-        var objectID = intersection.object.userData.IDS[intersection.index];
+        const objectID = intersection.object.userData.IDS[intersection.index];
         console.log("clicked on " + objectID );
-        var linkTag = document.getElementById("asteroidLink");
+        const linkTag = document.getElementById("asteroidLink");
         linkTag.innerText = objectID;
-        linkTag.href = "https://www.minorplanetcenter.net/db_search/show_object?utf8=✓&object_id=" + objectID
-        
+        linkTag.href = "https://www.minorplanetcenter.net/db_search/show_object?utf8=✓&object_id=" + objectID;
+        if (server) {
+            const loader = new THREE.FileLoader();
+            loader.load("/obj/" + objectID.replace(/ /g, '+'),
+                function (data) {
+                    if (orbitLine !== null) {
+                        scene.remove(orbitLine)
+                    }
+
+                    const response = JSON.parse(data);
+
+                    let positions = [];
+                    let colors = [];
+                    for (let i = 0; i < response.Orbit.length; i++) {
+                        positions.push(response.Orbit[i].X / scale, response.Orbit[i].Z / scale, response.Orbit[i].Y / scale);
+                        colors.push(0, 0, 255);
+                    }
+
+                    positions.push(positions[0], positions[1], positions[2]);
+                    colors.push(0, 0, 255);
+
+                    const geometry = new THREE.BufferGeometry();
+                    geometry.addAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+                    geometry.addAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+                    geometry.computeBoundingSphere();
+
+                    orbitLine = new THREE.Line(geometry, new THREE.LineBasicMaterial({color: 0x77FF77, linewidth: 10}));
+                    scene.add(orbitLine);
+                    console.log("loaded " + objectID);
+                },
+                function(xhr) {
+
+                },
+                function(error) {
+                    // If we cant talk to the server for some reason we won't try again.
+                    // It is likely we are running in a static environment.
+                    server = false;
+                }
+            )
+        }
     }
 }
 
@@ -257,7 +364,7 @@ function onDocumentMouseMove( event ) {
     dragFlag = 1;                
 }
 
-function onCanvasClick(event) {
+function onCanvasClick() {
     if (dragFlag === 0) {
         raycastCheck();
     }  
@@ -266,8 +373,8 @@ function onCanvasClick(event) {
 
 function resize() {
     if (needsResize(container)) {
-        var w = container.clientWidth;
-        var h = container.clientHeight;
+        const w = container.clientWidth;
+        const h = container.clientHeight;
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
         renderer.setSize(w, h, false);
@@ -290,7 +397,6 @@ function animate(time) {
             tween.update(time);
         }
         renderer.vr.getCamera = () => camera;
-
     }
 
     stats.update();
@@ -315,7 +421,7 @@ function toggleTour() {
 
 function setupMove() {
     let targetPos = pickPosition();
-    var startPos = {
+    let startPos = {
         x: camera.position.x,
         y: camera.position.y,
         z: camera.position.z
@@ -354,4 +460,13 @@ function pickPosition() {
 
 function randomNumber(max) {
     return Math.floor(Math.random() * max)
+}
+
+function mapToColour(map, x, y, z) {
+    let bucket = Math.round(((x - minX) / (maxX - minX)) * (map.length-1));
+    if (bucket < 0 || bucket >= map.length) {
+        console.log("could not find bucket for x: " + x + " got bucket " + bucket);
+        return map[0]
+    }
+    return map[bucket];
 }
