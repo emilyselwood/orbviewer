@@ -104,11 +104,12 @@ function init() {
     stats = new Stats();
     container.appendChild( stats.dom );
 
+    /*
     let vrButton = WEBVR.createButton(renderer);
     if (vrButton) {
         document.body.appendChild(vrButton);
     }
-
+    */
     camera = new THREE.PerspectiveCamera( 90, window.innerWidth / window.innerHeight, 3, 100000 );
     camera.position.z = 60;
 
